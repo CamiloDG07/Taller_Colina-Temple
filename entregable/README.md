@@ -15,8 +15,9 @@ repositorio del equipo:
 
 ## Cómo usar este entregable
 
-- **`informe.pdf`** es el documento de entrega formal: marco teórico
-  completo, metodología, resultados, análisis y conclusiones.
+- **`informe.pdf`** es el documento de entrega formal: metodología
+  (con la teoría y las fórmulas en el punto donde se usan),
+  resultados, análisis y conclusiones.
 - **`notebook/taller_8puzzle.ipynb`** es el punto de entrada para
   revisar y sustentar el trabajo, y el soporte técnico y reproducible
   de los resultados del informe. Al abrirlo y ejecutarlo (Run All):

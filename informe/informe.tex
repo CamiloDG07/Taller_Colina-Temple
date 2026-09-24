@@ -87,8 +87,8 @@ de la tasa de éxito se midió el costo (evaluaciones de $h$) y la
 calidad de la solución encontrada (número de movimientos frente a la
 solución óptima de cada tablero).
 
-Este documento presenta el marco teórico, la metodología y el análisis
-de los resultados. La implementación completa, los experimentos
+Este documento presenta la metodología, con la teoría necesaria en cada
+paso, y el análisis de los resultados. La implementación completa, los experimentos
 reproducibles y las tablas y figuras junto al código que las genera
 están en el cuaderno adjunto (\nolinkurl{taller_8puzzle.ipynb}) y en el
 repositorio del equipo
@@ -98,9 +98,13 @@ directamente desde ese código fuente, así que sus números de línea
 coinciden con los de los archivos.
 
 % ====================================================================
-\section{Marco teórico}
+\section{Metodología}
 
-\subsection{Búsqueda local}
+Esta sección describe el problema, los algoritmos y el diseño de los
+experimentos. Los conceptos teóricos y las fórmulas se presentan en el
+punto donde se usan, junto a la decisión de diseño que sostienen.
+
+\subsection{Enfoque: búsqueda local}
 
 Los algoritmos de búsqueda clásicos (anchura, profundidad, A*) exploran
 el espacio de estados de forma sistemática y guardan en memoria los
@@ -116,8 +120,6 @@ cada estado es una configuración completa del problema y el algoritmo
 la va modificando. La calidad de un estado se mide con una función
 objetivo; en este taller se minimiza una función de costo $h(s)$, cuyo
 mínimo global ($h = 0$) corresponde a la meta.
-
-\subsubsection{El paisaje del espacio de estados}
 
 Es útil imaginar el espacio de estados como un paisaje, donde la
 posición es el estado y la altura es el valor de $h$. Un algoritmo de
@@ -206,13 +208,23 @@ resolubles: la distancia máxima encontrada fue exactamente 31. La misma
 búsqueda da la longitud óptima de cada tablero de prueba, que se usa
 para medir la calidad de las soluciones.
 
-\subsection{Ascenso de colinas}
+\subsection{Conjunto de pruebas}
+
+Se generaron 30 tableros resolubles con semilla fija (42), aplicando el
+criterio de paridad de inversiones. Su $h$ inicial promedio es 13.97
+(entre 6 y 20), y su solución óptima promedio es de 22.5 movimientos
+(entre 16 y 28), calculada con la búsqueda en anchura descrita en la
+formulación.
+
+\subsection{Algoritmos}
+
+\subsubsection{Ascenso de colinas: más pronunciado y estocástico}
 
 El ascenso de colinas (\emph{hill climbing}) es la búsqueda local más
 simple: en cada paso se mueve a un vecino que mejora la función
 objetivo y se detiene cuando ninguno la mejora \cite{russell2021}. Es
 un algoritmo voraz: toma la mejor decisión local sin considerar
-consecuencias futuras.
+consecuencias futuras. Se implementaron dos variantes:
 
 \begin{itemize}
     \item \textbf{Más pronunciado} (\emph{steepest ascent}): evalúa
@@ -221,218 +233,22 @@ consecuencias futuras.
     azar entre los que mejoran $h$. Suele avanzar más despacio, pero a
     veces encuentra mejores soluciones en paisajes con muchas
     direcciones de mejora.
-    \item \textbf{Con reinicios aleatorios} (\emph{random restart}):
-    repite el ascenso desde distintos puntos de partida hasta encontrar
-    la meta o agotar un presupuesto. Si cada intento tiene probabilidad
-    $p$ de éxito, el número esperado de intentos es $1/p$, y el
-    algoritmo es completo con probabilidad que tiende a 1
-    \cite{russell2021}.
 \end{itemize}
 
-Las dos primeras variantes se detienen en el primer mínimo local. En
-el 8-puzzle, como $\Delta h = \pm 1$, un paso de ascenso siempre baja
-$h$ en exactamente 1, así que el camino de un ascenso tiene como máximo
-$h(s_0)$ movimientos y nunca retrocede.
-
-\subsection{Temple simulado}
-
-El temple simulado (\emph{simulated annealing}) se inspira en el
-recocido de metales: un material calentado y enfriado lentamente
-alcanza una estructura cristalina de baja energía
-\cite{kirkpatrick1983}. El algoritmo trata $h(s)$ como la energía del
-estado. En cada iteración elige un vecino al azar y calcula
-$\Delta E = h(s') - h(s)$:
-
-\begin{itemize}
-    \item si $\Delta E \le 0$ (el vecino no empeora), lo acepta siempre;
-    \item si $\Delta E > 0$ (el vecino empeora), lo acepta con
-    probabilidad
-    \begin{equation}
-        P(\text{aceptar}) = e^{-\Delta E / T},
-    \end{equation}
-    que es el criterio de Metropolis \cite{metropolis1953}.
-\end{itemize}
-
-La temperatura $T$ controla el equilibrio entre exploración y
-explotación. Con $T$ alta casi todo empeoramiento se acepta y el
-algoritmo se comporta como un paseo aleatorio. Con $T$ cercana a 0 casi
-ningún empeoramiento se acepta y el algoritmo se vuelve un ascenso de
-colinas. En el 8-puzzle, como $\Delta E = +1$ en todo empeoramiento, la
-probabilidad de aceptarlo depende solo de $T$: vale $e^{-1} \approx
-0.37$ con $T = 1$, $e^{-2} \approx 0.14$ con $T = 0.5$ y $e^{-20}$
-(prácticamente cero) con $T = 0.05$.
-
-Este trabajo usa enfriamiento geométrico: se hacen $L$ iteraciones con
-cada temperatura y después se actualiza $T_{k+1} = \alpha \, T_k$,
-desde $T_0$ hasta $T \le T_{\min}$. La ejecución también se detiene si
-$h$ llega a 0. Los parámetros son la temperatura inicial $T_0$, el
-factor de enfriamiento $\alpha \in (0, 1)$, las iteraciones por nivel
-$L$ y la temperatura mínima $T_{\min}$. El número de niveles de
-temperatura es
-\begin{equation}
-    N = \left\lceil \frac{\ln (T_{\min}/T_0)}{\ln \alpha} \right\rceil,
-\end{equation}
-y el costo máximo de una corrida es de unas $N \cdot L$ evaluaciones.
-Existe un resultado teórico que garantiza la convergencia al óptimo
-global con un enfriamiento logarítmico suficientemente lento
-\cite{russell2021}, pero ese ritmo es impracticable. En la práctica,
-elegir $T_0$ y $\alpha$ es un compromiso entre calidad y costo.
-
-A diferencia del ascenso de colinas, el estado actual del temple puede
-empeorar; por eso la implementación guarda aparte el mejor estado
-visto, que nunca empeora. El temple no tiene memoria de los estados
-visitados: puede aceptar un movimiento que deshace el anterior y volver
-a zonas ya exploradas.
-
-La Figura \ref{fig:codigo_temple} muestra el núcleo de la
-implementación: una iteración de temple con la temperatura actual. Las
-líneas 72 a 77 son el criterio de Metropolis. Si el vecino no empeora
-($\Delta E \le 0$) se acepta siempre (líneas 73 y 74); si empeora, se
-acepta solo cuando un número aleatorio uniforme cae por debajo de
-$e^{-\Delta E / T}$ (líneas 76 y 77). Esa rama es la que permite al
-temple salir de un mínimo local, y es exactamente lo que le falta al
-ascenso de colinas. Otros tres detalles del fragmento sostienen
-decisiones posteriores:
-
-\begin{itemize}
-    \item cada vecino evaluado suma una evaluación (líneas 69 y 70), el
-    mismo criterio de costo que en el ascenso de colinas;
-    \item el mejor estado se guarda aparte y solo cambia cuando mejora
-    (líneas 82 y 83), así que el resultado final nunca empeora aunque
-    el estado actual sí lo haga;
-    \item \texttt{movimientos\_aceptados} cuenta todos los movimientos
-    aceptados, incluidos los que empeoran $h$ (línea 81); por eso la
-    longitud de la solución del temple incluye su zigzagueo.
-\end{itemize}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics{temple_aceptacion.png}
-    \caption{Una iteración de temple simulado: criterio de aceptación
-    de Metropolis. Fuente: elaboración propia
-    (\nolinkurl{src/temple.py}).}
-    \label{fig:codigo_temple}
-\end{figure}
-
-% ====================================================================
-\section{Metodología}
-
-\subsection{Conjunto de pruebas}
-
-Se generaron 30 tableros resolubles con semilla fija (42), aplicando el
-criterio de paridad de inversiones. Su $h$ inicial promedio es 13.97
-(entre 6 y 20), y su solución óptima promedio es de 22.5 movimientos
-(entre 16 y 28), calculada con la búsqueda en anchura descrita en el
-marco teórico.
-
-\subsection{Métricas}
-
-\begin{itemize}
-    \item \textbf{Tasa de éxito}: porcentaje de tableros resueltos
-    ($h = 0$). Se calcula por separado en cada semilla, sobre los 30
-    tableros, y se reporta el promedio, la desviación estándar, el
-    mínimo y el máximo entre las 10 semillas.
-    \item \textbf{$h$ final}: valor de $h$ del mejor estado encontrado.
-    \item \textbf{Evaluaciones}: número de llamadas a $h(s)$, con el
-    mismo criterio en todos los algoritmos (una por cada estado
-    evaluado, incluido el inicial). Es la medida de costo
-    computacional.
-    \item \textbf{Porcentaje de corridas truncadas}: corridas que
-    agotaron el presupuesto de evaluaciones sin llegar a $h = 0$, con
-    el mismo criterio para temple y para reinicios.
-    \item \textbf{Longitud de la solución}: número de movimientos de la
-    secuencia que lleva del tablero asignado a la meta, solo en
-    corridas resueltas. En temple son los movimientos aceptados hasta
-    llegar a $h = 0$; en reinicios, los movimientos de la caminata del
-    intento exitoso más los pasos del ascenso. No se eliminan los
-    ciclos (movimientos que se deshacen).
-    \item \textbf{Razón sobre la óptima}: longitud de la solución
-    dividida por la longitud óptima del mismo tablero.
-\end{itemize}
-
-\subsection{Decisiones de diseño}
-
-\subsubsection{Varias semillas por tablero}
-
-Todo lo aleatorio (estocástico, reinicios y temple, incluidos los
-barridos) se repitió con 10 semillas por tablero, es decir, 300
-corridas por configuración. Steepest es determinista y corre una vez
-por tablero. La decisión surgió de una prueba: la misma configuración
-de temple ($T_0 = 10$, $\alpha = 0.97$), corrida una sola vez sobre los
-30 tableros con 8 semillas distintas, dio tasas de éxito de 53.3\%,
-66.7\%, 66.7\%, 70.0\%, 70.0\%, 73.3\%, 76.7\% y 90.0\%. Un rango de 37
-puntos para una misma configuración es mayor que la mayoría de las
-diferencias entre configuraciones: una sola corrida no alcanza para
-comparar algoritmos estocásticos.
-
-Cada corrida usa su propio generador de números aleatorios, con una
-semilla derivada de la configuración, la semilla y el tablero. En
-temple, la semilla depende de $(T_0, \alpha)$ y no del experimento que
-la corre, así que una misma configuración da exactamente los mismos
-números en el barrido y en la tabla principal.
-
-\subsubsection{Presupuesto compartido de evaluaciones}
-
-Para comparar con el mismo costo computacional, todas las
-configuraciones aleatorias de la tabla principal (reinicios, temple de
-la actividad y temple mejor) y todos los barridos usan el mismo tope de
-evaluaciones: \textbf{9823}. Es el promedio de evaluaciones que gasta
-temple con la configuración de la actividad ($T_0 = 10$,
-$\alpha = 0.97$) cuando corre hasta su parada natural. Reinicios
-necesita un tope porque no tiene criterio de parada propio, y el temple
-lo necesita para que una configuración no gane solo por enfriar más
-lento y gastar más evaluaciones.
-
-Para que el porcentaje de corridas truncadas sea comparable entre
-algoritmos, temple y reinicios usan la misma función para decidir si
-una corrida fue truncada (Figura \ref{fig:codigo_truncada}). Una
-corrida queda truncada solo si tenía presupuesto, no llegó a $h = 0$ y
-gastó todo el presupuesto (líneas 201 a 203). Una corrida que termina
-por su parada natural (temple que llega a $T_{\min}$) o que resuelve el
-tablero justo al agotar el presupuesto no cuenta como truncada.
-
-\begin{figure}[H]
-    \centering
-    \includegraphics{es_truncada.png}
-    \caption{Criterio de truncado compartido por temple y reinicios.
-    Fuente: elaboración propia (\nolinkurl{src/experimentos.py}).}
-    \label{fig:codigo_truncada}
-\end{figure}
-
-\subsubsection{Parámetros fijos de temple}
-
-Se usaron $L = 100$ iteraciones por nivel y $T_{\min} = 0.05$. Con
-$T = 0.05$, aceptar un empeoramiento tiene probabilidad $e^{-20}$: el
-temple ya está congelado. Se probó $T_{\min} = 0.01$ (el valor de un
-cuaderno exploratorio previo): temple de la actividad sin tope dio
-exactamente la misma tasa de éxito (70.3\%), pero gastó 11\,395
-evaluaciones en lugar de 9823, porque solo alarga la cola del
-enfriamiento. Bajarlo habría inflado el presupuesto compartido sin
-cambiar el resultado.
-
-\subsubsection{Barrido de \texorpdfstring{$T_0$}{T0} y \texorpdfstring{$\alpha$}{alpha}}
-
-La mejor configuración de temple se eligió con un barrido sobre la
-grilla
-\begin{equation*}
-    T_0 \in \{0.5, 1, 2, 5, 10, 20, 40\}, \qquad
-    \alpha \in \{0.90, 0.95, 0.97, 0.99, 0.995, 0.998\}
-\end{equation*}
-(42 combinaciones), sobre los 30 tableros, con 10 semillas y el presupuesto
-compartido. Se eligió la de mayor tasa de éxito promedio y, en caso de
-empate, la de menos evaluaciones. Una primera versión del barrido usaba
-10 tableros y una grilla sin $T_0$ bajos ni $\alpha$ altos; se amplió
-porque la muestra chica elegía configuraciones que después rendían
-peor en el conjunto completo, y porque la zona de $T_0$ bajo y
-$\alpha$ alto era justo donde el cuaderno exploratorio había encontrado
-buenos resultados.
-
-Las combinaciones que enfrían lento no alcanzan a llegar a $T_{\min}$
-dentro del presupuesto y quedan truncadas. Se dejaron competir así a
-propósito: el barrido responde qué configuración rinde más con el mismo
-costo, y enfriar lento es justamente gastar más evaluaciones.
+Las dos se detienen en el primer mínimo local. En el 8-puzzle, como
+$\Delta h = \pm 1$, un paso de ascenso siempre baja $h$ en exactamente
+1, así que el camino de un ascenso tiene como máximo $h(s_0)$
+movimientos y nunca retrocede.
 
 \subsubsection{Reinicios por perturbación y elección de \texorpdfstring{$K$}{K}}
+
+El ascenso con reinicios aleatorios (\emph{random restart}) repite el
+ascenso desde distintos puntos de partida hasta encontrar la meta o
+agotar un presupuesto. Si cada intento tiene probabilidad $p$ de
+éxito, el número esperado de intentos es $1/p$, y el algoritmo es
+completo con probabilidad que tiende a 1 \cite{russell2021}. Como no
+tiene un criterio de parada propio, necesita un presupuesto de
+evaluaciones.
 
 La primera implementación de reinicios partía de tableros resolubles
 generados al azar, sin relación con el tablero asignado. Llegó a
@@ -484,13 +300,13 @@ ascenso se descuenta del presupuesto (líneas 123 y 127).
 \end{figure}
 
 El largo $K$ de la caminata se fijó en \textbf{$K = 20$} usando el
-diámetro del espacio de estados. Con $K < 31$ la caminata sigue siendo
-una modificación local del tablero asignado. Con $K \ge 31$ ya tiene
-alcance para llegar a cualquier tablero resoluble, y el reinicio se
-parece cada vez más a generar un tablero al azar. $K = 20$ es el mayor
-valor redondo por debajo de ese umbral. El barrido
-$K \in \{10, 20, 50, 100, 200\}$ se reporta aparte como análisis del
-efecto de $K$, no como criterio de selección.
+diámetro del espacio de estados (31, ver la formulación). Con $K < 31$
+la caminata sigue siendo una modificación local del tablero asignado.
+Con $K \ge 31$ ya tiene alcance para llegar a cualquier tablero
+resoluble, y el reinicio se parece cada vez más a generar un tablero al
+azar. $K = 20$ es el mayor valor redondo por debajo de ese umbral. El
+barrido $K \in \{10, 20, 50, 100, 200\}$ se reporta aparte como
+análisis del efecto de $K$, no como criterio de selección.
 
 En el código, la decisión queda fijada como una constante documentada
 y no como un número suelto (Figura \ref{fig:codigo_k}): el comentario
@@ -505,6 +321,193 @@ encuentra la misma justificación que este informe.
     Fuente: elaboración propia (\nolinkurl{src/experimentos.py}).}
     \label{fig:codigo_k}
 \end{figure}
+
+\subsubsection{Temple simulado}
+
+El temple simulado (\emph{simulated annealing}) se inspira en el
+recocido de metales: un material calentado y enfriado lentamente
+alcanza una estructura cristalina de baja energía
+\cite{kirkpatrick1983}. El algoritmo trata $h(s)$ como la energía del
+estado. En cada iteración elige un vecino al azar y calcula
+$\Delta E = h(s') - h(s)$:
+
+\begin{itemize}
+    \item si $\Delta E \le 0$ (el vecino no empeora), lo acepta siempre;
+    \item si $\Delta E > 0$ (el vecino empeora), lo acepta con
+    probabilidad
+    \begin{equation}
+        P(\text{aceptar}) = e^{-\Delta E / T},
+    \end{equation}
+    que es el criterio de Metropolis \cite{metropolis1953}.
+\end{itemize}
+
+La temperatura $T$ controla el equilibrio entre exploración y
+explotación. Con $T$ alta casi todo empeoramiento se acepta y el
+algoritmo se comporta como un paseo aleatorio. Con $T$ cercana a 0 casi
+ningún empeoramiento se acepta y el algoritmo se vuelve un ascenso de
+colinas. En el 8-puzzle, como $\Delta E = +1$ en todo empeoramiento, la
+probabilidad de aceptarlo depende solo de $T$: vale $e^{-1} \approx
+0.37$ con $T = 1$, $e^{-2} \approx 0.14$ con $T = 0.5$ y $e^{-20}$
+(prácticamente cero) con $T = 0.05$.
+
+A diferencia del ascenso de colinas, el estado actual del temple puede
+empeorar; por eso la implementación guarda aparte el mejor estado
+visto, que nunca empeora. El temple no tiene memoria de los estados
+visitados: puede aceptar un movimiento que deshace el anterior y volver
+a zonas ya exploradas.
+
+La Figura \ref{fig:codigo_temple} muestra el núcleo de la
+implementación: una iteración de temple con la temperatura actual. Las
+líneas 72 a 77 son el criterio de Metropolis. Si el vecino no empeora
+($\Delta E \le 0$) se acepta siempre (líneas 73 y 74); si empeora, se
+acepta solo cuando un número aleatorio uniforme cae por debajo de
+$e^{-\Delta E / T}$ (líneas 76 y 77). Esa rama es la que permite al
+temple salir de un mínimo local, y es exactamente lo que le falta al
+ascenso de colinas. Otros tres detalles del fragmento sostienen
+decisiones posteriores:
+
+\begin{itemize}
+    \item cada vecino evaluado suma una evaluación (líneas 69 y 70), el
+    mismo criterio de costo que en el ascenso de colinas;
+    \item el mejor estado se guarda aparte y solo cambia cuando mejora
+    (líneas 82 y 83), así que el resultado final nunca empeora aunque
+    el estado actual sí lo haga;
+    \item \texttt{movimientos\_aceptados} cuenta todos los movimientos
+    aceptados, incluidos los que empeoran $h$ (línea 81); por eso la
+    longitud de la solución del temple incluye su zigzagueo.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics{temple_aceptacion.png}
+    \caption{Una iteración de temple simulado: criterio de aceptación
+    de Metropolis. Fuente: elaboración propia
+    (\nolinkurl{src/temple.py}).}
+    \label{fig:codigo_temple}
+\end{figure}
+
+La temperatura baja con enfriamiento geométrico: se hacen $L$
+iteraciones con cada temperatura y después se actualiza
+$T_{k+1} = \alpha \, T_k$, desde $T_0$ hasta $T \le T_{\min}$. La
+ejecución también se detiene si $h$ llega a 0. Los parámetros son la
+temperatura inicial $T_0$, el factor de enfriamiento
+$\alpha \in (0, 1)$, las iteraciones por nivel $L$ y la temperatura
+mínima $T_{\min}$. El número de niveles de temperatura es
+\begin{equation}
+    N = \left\lceil \frac{\ln (T_{\min}/T_0)}{\ln \alpha} \right\rceil,
+\end{equation}
+y el costo máximo de una corrida es de unas $N \cdot L$ evaluaciones.
+Existe un resultado teórico que garantiza la convergencia al óptimo
+global con un enfriamiento logarítmico suficientemente lento
+\cite{russell2021}, pero ese ritmo es impracticable. En la práctica,
+elegir $T_0$ y $\alpha$ es un compromiso entre calidad y costo; por eso
+se eligieron con un barrido (Sección \ref{sec:barrido_temple}).
+
+Los otros dos parámetros quedaron fijos en $L = 100$ iteraciones por
+nivel y $T_{\min} = 0.05$. Con $T = 0.05$, aceptar un empeoramiento
+tiene probabilidad $e^{-20}$: el temple ya está congelado. Se probó
+$T_{\min} = 0.01$ (el valor de un cuaderno exploratorio previo): temple
+de la actividad sin tope dio exactamente la misma tasa de éxito
+(70.3\%), pero gastó 11\,395 evaluaciones en lugar de 9823, porque solo
+alarga la cola del enfriamiento. Bajarlo habría inflado el presupuesto
+compartido sin cambiar el resultado.
+
+\subsection{Métricas}
+
+\begin{itemize}
+    \item \textbf{Tasa de éxito}: porcentaje de tableros resueltos
+    ($h = 0$). Se calcula por separado en cada semilla, sobre los 30
+    tableros, y se reporta el promedio, la desviación estándar, el
+    mínimo y el máximo entre las 10 semillas.
+    \item \textbf{$h$ final}: valor de $h$ del mejor estado encontrado.
+    \item \textbf{Evaluaciones}: número de llamadas a $h(s)$, con el
+    mismo criterio en todos los algoritmos (una por cada estado
+    evaluado, incluido el inicial). Es la medida de costo
+    computacional.
+    \item \textbf{Porcentaje de corridas truncadas}: corridas que
+    agotaron el presupuesto de evaluaciones sin llegar a $h = 0$, con
+    el mismo criterio para temple y para reinicios.
+    \item \textbf{Longitud de la solución}: número de movimientos de la
+    secuencia que lleva del tablero asignado a la meta, solo en
+    corridas resueltas. En temple son los movimientos aceptados hasta
+    llegar a $h = 0$; en reinicios, los movimientos de la caminata del
+    intento exitoso más los pasos del ascenso. No se eliminan los
+    ciclos (movimientos que se deshacen).
+    \item \textbf{Razón sobre la óptima}: longitud de la solución
+    dividida por la longitud óptima del mismo tablero.
+\end{itemize}
+
+\subsection{Diseño experimental}
+
+\subsubsection{Varias semillas por tablero}
+
+Todo lo aleatorio (estocástico, reinicios y temple, incluidos los
+barridos) se repitió con 10 semillas por tablero, es decir, 300
+corridas por configuración. Steepest es determinista y corre una vez
+por tablero. La decisión surgió de una prueba: la misma configuración
+de temple ($T_0 = 10$, $\alpha = 0.97$), corrida una sola vez sobre los
+30 tableros con 8 semillas distintas, dio tasas de éxito de 53.3\%,
+66.7\%, 66.7\%, 70.0\%, 70.0\%, 73.3\%, 76.7\% y 90.0\%. Un rango de 37
+puntos para una misma configuración es mayor que la mayoría de las
+diferencias entre configuraciones: una sola corrida no alcanza para
+comparar algoritmos estocásticos.
+
+Cada corrida usa su propio generador de números aleatorios, con una
+semilla derivada de la configuración, la semilla y el tablero. En
+temple, la semilla depende de $(T_0, \alpha)$ y no del experimento que
+la corre, así que una misma configuración da exactamente los mismos
+números en el barrido y en la tabla principal.
+
+\subsubsection{Presupuesto compartido de evaluaciones}
+
+Para comparar con el mismo costo computacional, todas las
+configuraciones aleatorias de la tabla principal (reinicios, temple de
+la actividad y temple mejor) y todos los barridos usan el mismo tope de
+evaluaciones: \textbf{9823}. Es el promedio de evaluaciones que gasta
+temple con la configuración de la actividad ($T_0 = 10$,
+$\alpha = 0.97$) cuando corre hasta su parada natural. Reinicios
+necesita un tope porque no tiene criterio de parada propio, y el temple
+lo necesita para que una configuración no gane solo por enfriar más
+lento y gastar más evaluaciones.
+
+Para que el porcentaje de corridas truncadas sea comparable entre
+algoritmos, temple y reinicios usan la misma función para decidir si
+una corrida fue truncada (Figura \ref{fig:codigo_truncada}). Una
+corrida queda truncada solo si tenía presupuesto, no llegó a $h = 0$ y
+gastó todo el presupuesto (líneas 201 a 203). Una corrida que termina
+por su parada natural (temple que llega a $T_{\min}$) o que resuelve el
+tablero justo al agotar el presupuesto no cuenta como truncada.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics{es_truncada.png}
+    \caption{Criterio de truncado compartido por temple y reinicios.
+    Fuente: elaboración propia (\nolinkurl{src/experimentos.py}).}
+    \label{fig:codigo_truncada}
+\end{figure}
+
+\subsubsection{Barrido de \texorpdfstring{$T_0$}{T0} y \texorpdfstring{$\alpha$}{alpha}}
+\label{sec:barrido_temple}
+
+La mejor configuración de temple se eligió con un barrido sobre la
+grilla
+\begin{equation*}
+    T_0 \in \{0.5, 1, 2, 5, 10, 20, 40\}, \qquad
+    \alpha \in \{0.90, 0.95, 0.97, 0.99, 0.995, 0.998\}
+\end{equation*}
+(42 combinaciones), sobre los 30 tableros, con 10 semillas y el presupuesto
+compartido. Se eligió la de mayor tasa de éxito promedio y, en caso de
+empate, la de menos evaluaciones. Una primera versión del barrido usaba
+10 tableros y una grilla sin $T_0$ bajos ni $\alpha$ altos; se amplió
+porque la muestra chica elegía configuraciones que después rendían
+peor en el conjunto completo, y porque la zona de $T_0$ bajo y
+$\alpha$ alto era justo donde el cuaderno exploratorio había encontrado
+buenos resultados.
+
+Las combinaciones que enfrían lento no alcanzan a llegar a $T_{\min}$
+dentro del presupuesto y quedan truncadas. Se dejaron competir así a
+propósito: el barrido responde qué configuración rinde más con el mismo
+costo, y enfriar lento es justamente gastar más evaluaciones.
 
 \subsection{Configuraciones comparadas}
 
